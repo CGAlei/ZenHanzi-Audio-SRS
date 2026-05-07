@@ -1,0 +1,222 @@
+[
+  {
+    "id": "jieu4",
+    "hanzi": "救赎",
+    "pinyin": "jiù shú",
+    "meaning": "redención,salvación,perdón",
+    "distractors": [
+      "castigo",
+      "ayuda",
+      "olvido"
+    ],
+    "chineseAudio": "audio/救赎.mp3",
+    "sentenceAudio": "sentences/救赎.mp3",
+    "sentenceText": "他救赎了自己，开始了新的生活。",
+    "favorited": false,
+    "interval": 1,
+    "ease": 2.5,
+    "due": 1715260800000,
+    "reps": 0,
+    "lapses": 0,
+    "hidden": false,
+    "createdAt": 1715260800000
+  },
+  {
+    "id": "ni3hao3",
+    "hanzi": "你好",
+    "pinyin": "nǐ hǎo",
+    "meaning": "hola",
+    "distractors": [
+      "adiós",
+      "gracias",
+      "lo siento"
+    ],
+    "chineseAudio": "audio/你好.mp3",
+    "sentenceAudio": "sentences/你好.mp3",
+    "sentenceText": "你好，很高兴见到你。",
+    "favorited": true,
+    "interval": 3,
+    "ease": 2.6,
+    "due": 1715347200000,
+    "reps": 2,
+    "lapses": 0,
+    "hidden": false,
+    "createdAt": 1715000000000
+  },
+  {
+    "id": "xie4xie",
+    "hanzi": "谢谢",
+    "pinyin": "xiè xie",
+    "meaning": "gracias",
+    "distractors": [
+      "de nada",
+      "por favor",
+      "lo siento"
+    ],
+    "chineseAudio": "audio/谢谢.mp3",
+    "sentenceAudio": "sentences/谢谢.mp3",
+    "sentenceText": "谢谢你的帮助，我非常感激。",
+    "favorited": false,
+    "interval": 2,
+    "ease": 2.5,
+    "due": 1715097600000,
+    "reps": 1,
+    "lapses": 0,
+    "hidden": false,
+    "createdAt": 1715000000000
+  },
+  {
+    "id": "dui4buqi3",
+    "hanzi": "对不起",
+    "pinyin": "duì bu qǐ",
+    "meaning": "lo siento,disculpe",
+    "distractors": [
+      "gracias",
+      "hola",
+      "adiós"
+    ],
+    "chineseAudio": "audio/对不起.mp3",
+    "sentenceAudio": "sentences/对不起.mp3",
+    "sentenceText": "对不起，我不是故意的。",
+    "favorited": false,
+    "interval": 1,
+    "ease": 2.5,
+    "due": 1715260800000,
+    "reps": 0,
+    "lapses": 0,
+    "hidden": false,
+    "createdAt": 1715260800000
+  },
+  {
+    "id": "zai4jian4",
+    "hanzi": "再见",
+    "pinyin": "zài jiàn",
+    "meaning": "adiós",
+    "distractors": [
+      "hola",
+      "hasta luego",
+      "buenas noches"
+    ],
+    "chineseAudio": "audio/再见.mp3",
+    "sentenceAudio": "sentences/再见.mp3",
+    "sentenceText": "再见，我们明天见。",
+    "favorited": true,
+    "interval": 5,
+    "ease": 2.7,
+    "due": 1715788800000,
+    "reps": 3,
+    "lapses": 0,
+    "hidden": false,
+    "createdAt": 1715000000000
+  },
+  {
+    "id": "peng2you",
+    "hanzi": "朋友",
+    "pinyin": "péng you",
+    "meaning": "amigo",
+    "distractors": [
+      "enemigo",
+      "familia",
+      "compañero"
+    ],
+    "chineseAudio": "audio/朋友.mp3",
+    "sentenceAudio": "sentences/朋友.mp3",
+    "sentenceText": "他是我的好朋友。",
+    "favorited": false,
+    "interval": 1,
+    "ease": 2.5,
+    "due": 1715260800000,
+    "reps": 0,
+    "lapses": 0,
+    "hidden": false,
+    "createdAt": 1715260800000
+  },
+  {
+    "id": "lao3shi1",
+    "hanzi": "老师",
+    "pinyin": "lǎo shī",
+    "meaning": "profesor",
+    "distractors": [
+      "estudiante",
+      "doctor",
+      "ingeniero"
+    ],
+    "chineseAudio": "audio/老师.mp3",
+    "sentenceAudio": "sentences/老师.mp3",
+    "sentenceText": "我的老师非常和蔼。",
+    "favorited": false,
+    "interval": 2,
+    "ease": 2.5,
+    "due": 1715357200000,
+    "reps": 1,
+    "lapses": 0,
+    "hidden": false,
+    "createdAt": 1715000000000
+  },
+  {
+    "id": "zhong1guo2",
+    "hanzi": "中国",
+    "pinyin": "zhōng guó",
+    "meaning": "China",
+    "distractors": [
+      "Japón",
+      "Corea",
+      "Vietnam"
+    ],
+    "chineseAudio": "audio/中国.mp3",
+    "sentenceAudio": "sentences/中国.mp3",
+    "sentenceText": "中国是一个美丽的国家。",
+    "favorited": true,
+    "interval": 4,
+    "ease": 2.6,
+    "due": 1715616000000,
+    "reps": 2,
+    "lapses": 0,
+    "hidden": false,
+    "createdAt": 1715000000000
+  },
+  {
+    "id": "mei3guo2",
+    "hanzi": "美国",
+    "pinyin": "měi guó",
+    "meaning": "Estados Unidos",
+    "distractors": [
+      "Inglaterra",
+      "Francia",
+      "Alemania"
+    ],
+    "chineseAudio": "audio/美国.mp3",
+    "sentenceAudio": "sentences/美国.mp3",
+    "sentenceText": "美国有很多大城市。",
+    "favorited": false,
+    "interval": 1,
+    "ease": 2.5,
+    "due": 1715260800000,
+    "reps": 0,
+    "lapses": 0,
+    "hidden": false,
+    "createdAt": 1715260800000
+  },
+  {
+    "id": "ri4ben3",
+    "hanzi": "日本",
+    "pinyin": "rì běn",
+    "meaning": "Japón",
+    "distractors": [
+      "China",
+      "Corea",
+      "Taiwán"
+    ],
+    "chineseAudio": "audio/日本.mp3",
+    "sentenceAudio": "sentences/日本.mp3",
+    "sentenceText": "日本以樱花闻名。",
+    "favorited": false,
+    "interval": 3,
+    "ease": 2.5,
+    "due": 1715443200000,
+    "reps": 1,
+    "lapses": 0,
+    "hidden": false,
+    "createdAt": 1715000000000
+  }
+]
