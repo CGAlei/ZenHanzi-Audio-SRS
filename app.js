@@ -107,7 +107,8 @@ document.addEventListener('DOMContentLoaded', () => {
     summaryNew: Utils.$('summaryNew'),
     summaryAccuracy: Utils.$('summaryAccuracy'),
     toast: Utils.$('toast'),
-    favoriteToggleBtn: Utils.$('favoriteToggleBtn')
+    favoriteToggleBtn: Utils.$('favoriteToggleBtn'),
+    hideWordBtn: Utils.$('hideWordBtn')
   });
 
   UI.bindEvents();
@@ -247,6 +248,7 @@ const UI = {
     if (dom.replayBtn) dom.replayBtn.onclick = () => EventBus.emit('ui_replay');
     if (dom.helpBtn) dom.helpBtn.onclick = () => EventBus.emit('ui_help');
     if (dom.favoriteToggleBtn) dom.favoriteToggleBtn.onclick = () => EventBus.emit('ui_toggle_favorite');
+    if (dom.hideWordBtn) dom.hideWordBtn.onclick = () => EventBus.emit('ui_hide_word');
     
     const goHome = () => {
       dom.summary.classList.remove('active');
@@ -399,28 +401,45 @@ const StorageManager = {
     let queue = [];
     if (mode === 'srs') {
       queue = this.vocabulary.filter(w => this.userData[w.id] && !this.userData[w.id].hidden && this.userData[w.id].due <= now);
+      Utils.shuffleArray(queue);
     } else if (mode === 'new') {
       queue = this.vocabulary.filter(w => this.userData[w.id] && !this.userData[w.id].hidden && this.userData[w.id].reps === 0);
+      queue.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     } else if (mode === 'favorites') {
       queue = this.vocabulary.filter(w => this.userData[w.id] && !this.userData[w.id].hidden && this.userData[w.id].favorited);
+      Utils.shuffleArray(queue);
     }
-    Utils.shuffleArray(queue);
     return queue.map(w => w.id);
   },
 
   exportProgress() {
     try {
-      const dataStr = JSON.stringify(this.userData, null, 2);
+      const fullExport = JSON.parse(JSON.stringify(this.vocabulary));
+      
+      for (let word of fullExport) {
+        const ud = this.userData[word.id];
+        if (ud) {
+          word.favorited = ud.favorited;
+          word.interval = ud.interval;
+          word.ease = ud.ease;
+          word.due = ud.due;
+          word.reps = ud.reps;
+          word.lapses = ud.lapses;
+          word.hidden = ud.hidden;
+        }
+      }
+
+      const dataStr = JSON.stringify(fullExport, null, 2);
       const blob = new Blob([dataStr], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `zenhanzi_backup_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+      a.download = `vocabulary_updated_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      UI.showToast('Progreso exportado', 'success');
+      UI.showToast('Vocabulario exportado', 'success');
     } catch (e) {
       console.error('Export error', e);
       UI.showToast('Error al exportar', 'error');
@@ -433,16 +452,36 @@ const StorageManager = {
     reader.onload = (e) => {
       try {
         const imported = JSON.parse(e.target.result);
-        if (!imported || typeof imported !== 'object') throw new Error('Formato inválido');
-        const keys = Object.keys(imported);
-        if (keys.length === 0) throw new Error('Archivo vacío');
+        if (!imported) throw new Error('Formato inválido');
         
-        const sample = imported[keys[0]];
-        if (!sample || typeof sample !== 'object' || !('interval' in sample || 'reps' in sample)) {
-          throw new Error('Datos no reconocidos');
+        let newUserData = { ...this.userData };
+
+        if (Array.isArray(imported)) {
+          if (imported.length === 0) throw new Error('Array vacío');
+          for (const word of imported) {
+            if (word && word.id) {
+              newUserData[word.id] = {
+                favorited: word.favorited || false,
+                interval: word.interval || 1,
+                ease: word.ease || 2.5,
+                due: word.due || 0,
+                reps: word.reps || 0,
+                lapses: word.lapses || 0,
+                hidden: word.hidden || false
+              };
+            }
+          }
+        } else {
+          const keys = Object.keys(imported);
+          if (keys.length === 0) throw new Error('Archivo vacío');
+          const sample = imported[keys[0]];
+          if (!sample || typeof sample !== 'object' || !('interval' in sample || 'reps' in sample)) {
+            throw new Error('Datos no reconocidos');
+          }
+          newUserData = { ...this.userData, ...imported };
         }
 
-        this.userData = { ...this.userData, ...imported };
+        this.userData = newUserData;
         this.saveUserData();
         UI.showToast('Progreso importado. Recargando...', 'success');
         setTimeout(() => location.reload(), 1500);
@@ -729,6 +768,7 @@ const SessionManager = {
     EventBus.on('ui_help', () => this.handleHelp());
     EventBus.on('ui_replay', () => this.transition('PLAYING_PROMPT'));
     EventBus.on('ui_toggle_favorite', () => this.toggleFavorite());
+    EventBus.on('ui_hide_word', () => this.hideCurrentWord());
     EventBus.on('ui_exit_session', () => this.exitSession());
   },
 
@@ -929,6 +969,20 @@ const SessionManager = {
     UI.updateFavoriteButton(ud.favorited);
     const msg = ud.favorited ? '❤️ Añadido a favoritos' : '🤍 Eliminado de favoritos';
     UI.showToast(msg, 'info', 1200);
+  },
+
+  hideCurrentWord() {
+    if (!this.currentWordObj) return;
+    const id = this.currentWordObj.id;
+    const ud = StorageManager.userData[id];
+    if (!ud) return;
+
+    ud.hidden = true;
+    StorageManager.userData[id] = ud;
+    StorageManager.saveUserData();
+
+    UI.showToast('🚫 Palabra oculta', 'info', 1500);
+    this.nextWord();
   },
 
   endSession() {
