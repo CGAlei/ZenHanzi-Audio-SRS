@@ -982,6 +982,33 @@ body {
     transform: scaleY(1);
   }
 }
+
+.favorite-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.3);
+  transition: all 0.2s ease;
+  padding: 0 0.15rem;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.favorite-btn:hover {
+  color: rgba(255, 255, 255, 0.6);
+  transform: scale(1.15);
+}
+.favorite-btn.favorited {
+  color: #fb7185;
+  text-shadow: 0 0 12px rgba(251, 113, 133, 0.5);
+}
+.favorite-btn.favorited:hover {
+  color: #fda4af;
+}
+.favorite-btn:active {
+  transform: scale(0.9);
+}
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;

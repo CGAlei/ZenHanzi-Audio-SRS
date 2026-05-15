@@ -1,6 +1,6 @@
 /**
  * ZenHanzi - Audio SRS Trainer
- * Refactored Modular Version
+ * Refactored Modular Version - FSM & MediaController
  * Engine: Vosk + WebSpeech Fallback
  */
 
@@ -22,11 +22,44 @@ const Utils = {
     }
     return arr;
   },
+  levenshtein(a, b) {
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1, // substitution
+            matrix[i][j - 1] + 1,     // insertion
+            matrix[i - 1][j] + 1      // deletion
+          );
+        }
+      }
+    }
+    return matrix[b.length][a.length];
+  },
   matchMeaning(spoken, validList) {
     return validList.some(valid => {
-      if (spoken === valid) return true;
-      if (spoken.startsWith(valid + " ")) return true;
-      if (spoken.endsWith(" " + valid)) return true;
+      // Direct exact match or substring match (for filler words)
+      if (spoken === valid || spoken.startsWith(valid + " ") || spoken.endsWith(" " + valid) || spoken.includes(" " + valid + " ")) return true;
+      
+      // Levenshtein Tolerance: 1 error for len <= 5, 2 for len > 5
+      const tolerance = valid.length <= 5 ? 1 : 2;
+      
+      // Check each word independently (helps if Vosk adds filler words)
+      const spokenWords = spoken.split(' ');
+      for (const sw of spokenWords) {
+        if (this.levenshtein(sw, valid) <= tolerance) return true;
+      }
+      
+      // Also check the entire phrase against the valid phrase
+      if (this.levenshtein(spoken, valid) <= tolerance) return true;
+      
       return false;
     });
   }
@@ -73,14 +106,31 @@ document.addEventListener('DOMContentLoaded', () => {
     summaryReviewed: Utils.$('summaryReviewed'),
     summaryNew: Utils.$('summaryNew'),
     summaryAccuracy: Utils.$('summaryAccuracy'),
-    toast: Utils.$('toast')
+    toast: Utils.$('toast'),
+    favoriteToggleBtn: Utils.$('favoriteToggleBtn')
   });
 
   UI.bindEvents();
 });
 
 // ============================
-// 3. USER INTERFACE (UI)
+// 3. EVENT BUS (Pub/Sub)
+// ============================
+const EventBus = {
+  events: {},
+  on(event, listener) {
+    if (!this.events[event]) this.events[event] = [];
+    this.events[event].push(listener);
+  },
+  emit(event, data) {
+    if (this.events[event]) {
+      this.events[event].forEach(l => Utils.safe(() => l(data)));
+    }
+  }
+};
+
+// ============================
+// 4. USER INTERFACE (UI)
 // ============================
 const UI = {
   showToast(message, type = 'info', duration = 3000) {
@@ -116,7 +166,20 @@ const UI = {
     dom.engineBadge.textContent = text;
   },
 
-  renderWord(wordObj, sessionIndex, totalWords, onAnswer) {
+  updateFavoriteButton(isFavorited) {
+    if (!dom.favoriteToggleBtn) return;
+    if (isFavorited) {
+      dom.favoriteToggleBtn.textContent = '♥';
+      dom.favoriteToggleBtn.classList.add('favorited');
+      dom.favoriteToggleBtn.title = 'Quitar de favoritos';
+    } else {
+      dom.favoriteToggleBtn.textContent = '♡';
+      dom.favoriteToggleBtn.classList.remove('favorited');
+      dom.favoriteToggleBtn.title = 'Marcar como favorito';
+    }
+  },
+
+  renderWord(wordObj, sessionIndex, totalWords) {
     if (!dom.hanzi) return;
     dom.hanzi.textContent = wordObj.hanzi;
     dom.pinyin.textContent = wordObj.pinyin;
@@ -137,7 +200,7 @@ const UI = {
       const btn = document.createElement('button');
       btn.textContent = opt;
       btn.dataset.index = idx;
-      btn.onclick = () => onAnswer(opt, correctAnswer);
+      btn.onclick = () => EventBus.emit('ui_answer', opt);
       fragment.appendChild(btn);
     });
     dom.responseContainer.replaceChildren(fragment);
@@ -150,7 +213,10 @@ const UI = {
         dom.helpBtn.classList.add('hidden');
       }
     }
-    
+
+    const ud = StorageManager.userData[wordObj.id];
+    UI.updateFavoriteButton(ud ? ud.favorited : false);
+
     dom.feedback.classList.add('hidden');
   },
 
@@ -168,18 +234,19 @@ const UI = {
   },
 
   bindEvents() {
-    if (dom.continueBtn) dom.continueBtn.onclick = () => SessionManager.startSession('srs');
-    if (dom.newBtn) dom.newBtn.onclick = () => SessionManager.startSession('new');
-    if (dom.favBtn) dom.favBtn.onclick = () => SessionManager.startSession('favorites');
+    if (dom.continueBtn) dom.continueBtn.onclick = () => EventBus.emit('ui_start_session', 'srs');
+    if (dom.newBtn) dom.newBtn.onclick = () => EventBus.emit('ui_start_session', 'new');
+    if (dom.favBtn) dom.favBtn.onclick = () => EventBus.emit('ui_start_session', 'favorites');
     if (dom.exportBtn) dom.exportBtn.onclick = () => StorageManager.exportProgress();
     if (dom.importBtn) dom.importBtn.onclick = () => dom.importFile.click();
     if (dom.importFile) dom.importFile.onchange = (e) => {
       if (e.target.files[0]) StorageManager.importProgress(e.target.files[0]);
       dom.importFile.value = '';
     };
-    if (dom.exitBtn) dom.exitBtn.onclick = () => SessionManager.exitSession();
-    if (dom.replayBtn) dom.replayBtn.onclick = () => SessionManager.replayAudio();
-    if (dom.helpBtn) dom.helpBtn.onclick = () => SessionManager.playSentenceHelp(false);
+    if (dom.exitBtn) dom.exitBtn.onclick = () => EventBus.emit('ui_exit_session');
+    if (dom.replayBtn) dom.replayBtn.onclick = () => EventBus.emit('ui_replay');
+    if (dom.helpBtn) dom.helpBtn.onclick = () => EventBus.emit('ui_help');
+    if (dom.favoriteToggleBtn) dom.favoriteToggleBtn.onclick = () => EventBus.emit('ui_toggle_favorite');
     
     const goHome = () => {
       dom.summary.classList.remove('active');
@@ -191,7 +258,6 @@ const UI = {
 
     document.addEventListener('keydown', (e) => {
       if (!dom.session || !dom.session.classList.contains('active')) return;
-      if (!SessionManager.awaitingAnswer || SessionManager.isHelpMode) return;
       
       const buttons = dom.responseContainer.querySelectorAll('button');
       if (e.key >= '1' && e.key <= '4') {
@@ -211,8 +277,8 @@ const UI = {
     });
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && AudioEngine.audioContext?.state === 'suspended') {
-        Utils.safe(() => AudioEngine.audioContext.resume());
+      if (document.visibilityState === 'visible') {
+        MediaController.resumeContext();
       }
     });
 
@@ -226,7 +292,7 @@ const UI = {
 };
 
 // ============================
-// 4. STORAGE MANAGER
+// 5. STORAGE MANAGER
 // ============================
 const StorageManager = {
   vocabulary: [],
@@ -328,6 +394,20 @@ const StorageManager = {
     }
   },
 
+  getDueWords(mode) {
+    const now = Date.now();
+    let queue = [];
+    if (mode === 'srs') {
+      queue = this.vocabulary.filter(w => this.userData[w.id] && !this.userData[w.id].hidden && this.userData[w.id].due <= now);
+    } else if (mode === 'new') {
+      queue = this.vocabulary.filter(w => this.userData[w.id] && !this.userData[w.id].hidden && this.userData[w.id].reps === 0);
+    } else if (mode === 'favorites') {
+      queue = this.vocabulary.filter(w => this.userData[w.id] && !this.userData[w.id].hidden && this.userData[w.id].favorited);
+    }
+    Utils.shuffleArray(queue);
+    return queue.map(w => w.id);
+  },
+
   exportProgress() {
     try {
       const dataStr = JSON.stringify(this.userData, null, 2);
@@ -377,14 +457,175 @@ const StorageManager = {
 };
 
 // ============================
-// 5. AUDIO ENGINE
+// 6. MEDIA CONTROLLER
 // ============================
-const AudioEngine = {
-  currentAudio: null,
-  audioFeedbackContext: null,
+const MediaController = {
   audioContext: null,
+  currentAudio: null,
+  
+  // Speech properties
+  type: null, 
+  webSpeechRec: null,
+  voskModel: null,
+  voskRecognizer: null,
+  micStream: null,
+  micSourceNode: null,
+  recognizerNode: null,
+  isVoskLoaded: false,
+  VOICE_TRIGGERS: ['pista', 'no se', 'no sé', 'no lo se', 'no lo sé', 'ayuda', 'help', 'repite', 'otra vez'],
 
-  cleanup() {
+  async init() {
+    if (!this.audioContext) {
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    }
+    await this.resumeContext();
+
+    if (dom.voiceStatus) dom.voiceStatus.classList.remove('hidden');
+
+    const isMicActive = this.micStream && this.micStream.getTracks().every(t => t.readyState === 'live');
+    if (this.type === 'vosk' && this.isVoskLoaded && this.audioContext.state === 'running' && isMicActive) {
+      return;
+    }
+
+    if ((!this.type || this.type === 'vosk') && typeof Vosk !== 'undefined') {
+      if (dom.voiceStatus) dom.voiceStatus.textContent = '⏳ Preparando voz offline...';
+      try {
+        await this.initVosk();
+        this.type = 'vosk';
+        UI.updateEngineBadge('offline', 'Vosk · Offline');
+        if (dom.voiceStatus) dom.voiceStatus.textContent = '🎙️ Voz offline activa';
+        return;
+      } catch (err) {
+        console.error('Vosk init/restart failed:', err);
+        if (this.type === 'vosk') this.type = null; 
+      }
+    }
+
+    if (!this.type && (window.SpeechRecognition || window.webkitSpeechRecognition)) {
+      if (dom.voiceStatus) dom.voiceStatus.textContent = '⏳ Iniciando voz online...';
+      try {
+        this.initWebSpeech();
+        this.type = 'webspeech';
+        UI.updateEngineBadge('online', 'Google · Online');
+        if (dom.voiceStatus) dom.voiceStatus.textContent = '🎙️ Voz online activa';
+      } catch (err) {
+        console.error('WebSpeech init failed:', err);
+        UI.updateEngineBadge('error', 'Sin reconocimiento');
+        if (dom.voiceStatus) dom.voiceStatus.textContent = '❌ Reconocimiento no disponible';
+      }
+    }
+  },
+
+  async initVosk() {
+    if (!this.micStream || !this.micStream.getTracks().every(t => t.readyState === 'live')) {
+      if (this.micStream) this.micStream.getTracks().forEach(t => t.stop());
+      this.micStream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1, sampleRate: 16000 }
+      });
+    }
+
+    if (!this.isVoskLoaded) {
+      this.voskModel = await Vosk.createModel('./models/es-model.tar.gz');
+      this.voskRecognizer = new this.voskModel.KaldiRecognizer(16000);
+      this.voskRecognizer.on("result", (message) => {
+        if (message.result.text) this.handleTranscript(message.result.text);
+      });
+      this.isVoskLoaded = true;
+    }
+
+    if (this.micSourceNode) this.micSourceNode.disconnect();
+    if (this.recognizerNode) this.recognizerNode.disconnect();
+
+    this.micSourceNode = this.audioContext.createMediaStreamSource(this.micStream);
+    this.recognizerNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+    this.recognizerNode.onaudioprocess = (event) => {
+      // Only process when FSM is explicitly listening
+      if (SessionManager.state === 'LISTENING' && this.voskRecognizer) {
+        try { this.voskRecognizer.acceptWaveform(event.inputBuffer); } catch (e) { }
+      }
+    };
+
+    this.micSourceNode.connect(this.recognizerNode);
+    const dummyGain = this.audioContext.createGain();
+    dummyGain.gain.value = 0;
+    this.recognizerNode.connect(dummyGain);
+    dummyGain.connect(this.audioContext.destination);
+  },
+
+  initWebSpeech() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    this.webSpeechRec = new SpeechRecognition();
+    this.webSpeechRec.lang = 'es-ES';
+    this.webSpeechRec.continuous = false;
+    this.webSpeechRec.interimResults = false;
+    this.webSpeechRec.maxAlternatives = 1;
+
+    this.webSpeechRec.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      this.handleTranscript(transcript);
+    };
+
+    this.webSpeechRec.onerror = (event) => {
+      if (event.error === 'network' || event.error === 'service-not-allowed') {
+        if (dom.voiceStatus) dom.voiceStatus.textContent = '❌ Voz online bloqueada por navegador';
+        UI.updateEngineBadge('error', 'Google bloqueado');
+        this.type = null;
+        this.webSpeechRec = null;
+      } else if (event.error === 'not-allowed') {
+        if (dom.voiceStatus) dom.voiceStatus.textContent = '❌ Micrófono bloqueado';
+        UI.updateEngineBadge('error', 'Micrófono bloqueado');
+        this.type = null;
+      }
+    };
+
+    this.webSpeechRec.onend = () => {
+      if (SessionManager.state === 'LISTENING' && this.type === 'webspeech') {
+        try { this.webSpeechRec.start(); } catch (e) { } // auto restart
+      }
+    };
+  },
+
+  handleTranscript(transcript) {
+    if (SessionManager.state !== 'LISTENING') return;
+    
+    const normalized = Utils.normalizeText(transcript);
+    const isTrigger = this.VOICE_TRIGGERS.some(t => normalized === t || normalized.includes(t));
+
+    if (isTrigger) {
+      EventBus.emit('ui_help');
+      return;
+    }
+    
+    EventBus.emit('voice_recognized', transcript);
+  },
+
+  startListening() {
+    if (this.type === 'webspeech' && this.webSpeechRec) {
+      try {
+        this.webSpeechRec.start();
+        if (dom.voiceStatus) dom.voiceStatus.textContent = '🎙️ Escuchando... (di "pista")';
+      } catch (e) {} 
+    } else if (this.type === 'vosk') {
+      this.resumeContext();
+      if (dom.voiceStatus) dom.voiceStatus.textContent = '🎙️ Escuchando... (di "pista")';
+    }
+  },
+
+  stopListening() {
+    if (this.type === 'webspeech' && this.webSpeechRec) {
+      try { this.webSpeechRec.stop(); } catch (e) { }
+    }
+  },
+
+  async resumeContext() {
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      await Utils.safe(() => this.audioContext.resume());
+    }
+  },
+
+  stopAudio() {
     if (this.currentAudio) {
       this.currentAudio.pause();
       this.currentAudio.onended = null;
@@ -393,42 +634,26 @@ const AudioEngine = {
     }
   },
 
-  play(src, onEnded, onError) {
-    this.cleanup();
-    if (!src) return;
-    
-    if (dom.responseContainer) dom.responseContainer.classList.add("disabled");
-    
-    this.currentAudio = new Audio(src);
-    this.currentAudio.onended = () => {
-      if (dom.responseContainer) dom.responseContainer.classList.remove("disabled");
-      if (onEnded) onEnded();
-    };
-    this.currentAudio.onerror = (e) => {
-      if (dom.responseContainer) dom.responseContainer.classList.remove("disabled");
-      console.warn("Audio playback failed", e);
-      if (onError) onError();
-      else if (onEnded) onEnded();
-    };
-    
-    this.currentAudio.play().catch(e => {
-      if (dom.responseContainer) dom.responseContainer.classList.remove("disabled");
-      console.warn('Audio play rejected', e);
-      if (onError) onError();
-      else if (onEnded) onEnded();
+  playAudio(src) {
+    return new Promise((resolve, reject) => {
+      this.stopAudio();
+      if (!src) return reject('No source');
+      
+      this.currentAudio = new Audio(src);
+      this.currentAudio.onended = () => resolve();
+      this.currentAudio.onerror = () => reject('Playback failed');
+      this.currentAudio.play().catch(reject);
     });
   },
 
   playBeep(type) {
     try {
-      if (!this.audioFeedbackContext) this.audioFeedbackContext = new (window.AudioContext || window.webkitAudioContext)();
-      if (this.audioFeedbackContext.state === 'suspended') this.audioFeedbackContext.resume();
-
-      const osc = this.audioFeedbackContext.createOscillator();
-      const gain = this.audioFeedbackContext.createGain();
+      this.resumeContext();
+      const osc = this.audioContext.createOscillator();
+      const gain = this.audioContext.createGain();
       osc.connect(gain);
-      gain.connect(this.audioFeedbackContext.destination);
-      const now = this.audioFeedbackContext.currentTime;
+      gain.connect(this.audioContext.destination);
+      const now = this.audioContext.currentTime;
 
       if (type === 'listen') {
         osc.type = 'sine';
@@ -466,244 +691,115 @@ const AudioEngine = {
     } catch (e) {
       console.warn("AudioContext no soportado o bloqueado", e);
     }
-  }
-};
-
-// ============================
-// 6. SPEECH ENGINE
-// ============================
-const SpeechEngine = {
-  type: null, // 'webspeech', 'vosk', null
-  webSpeechRec: null,
-  voskModel: null,
-  voskRecognizer: null,
-  micStream: null,
-  micSourceNode: null,
-  recognizerNode: null,
-  isVoskLoaded: false,
-  VOICE_TRIGGERS: ['pista', 'no se', 'no sé', 'no lo se', 'no lo sé', 'ayuda', 'help', 'repite', 'otra vez'],
-
-  async init() {
-    if (dom.voiceStatus) dom.voiceStatus.classList.remove('hidden');
-
-    if (this.type === 'webspeech' && !this.webSpeechRec) this.type = null;
-
-    if (!this.type && typeof Vosk !== 'undefined') {
-      if (dom.voiceStatus) dom.voiceStatus.textContent = '⏳ Cargando modelo Vosk...';
-      try {
-        await this.initVosk();
-        this.type = 'vosk';
-        UI.updateEngineBadge('offline', 'Vosk · Offline');
-        if (dom.voiceStatus) dom.voiceStatus.textContent = '🎙️ Voz offline activa';
-        return;
-      } catch (err) {
-        console.error('Vosk init failed:', err);
-        if (dom.voiceStatus) dom.voiceStatus.textContent = '⚠️ Modelo Vosk no disponible';
-      }
-    }
-
-    if (!this.type && (window.SpeechRecognition || window.webkitSpeechRecognition)) {
-      if (dom.voiceStatus) dom.voiceStatus.textContent = '⏳ Iniciando voz online...';
-      try {
-        this.initWebSpeech();
-        this.type = 'webspeech';
-        UI.updateEngineBadge('online', 'Google · Online');
-        if (dom.voiceStatus) dom.voiceStatus.textContent = '🎙️ Voz online activa';
-      } catch (err) {
-        console.error('WebSpeech init failed:', err);
-        UI.updateEngineBadge('error', 'Sin reconocimiento');
-        if (dom.voiceStatus) dom.voiceStatus.textContent = '❌ Reconocimiento de voz no disponible';
-        this.type = null;
-      }
-    } else if (!this.type) {
-      UI.updateEngineBadge('error', 'Sin reconocimiento');
-      if (dom.voiceStatus) dom.voiceStatus.textContent = '❌ Reconocimiento de voz no disponible';
-    }
-  },
-
-  initWebSpeech() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    this.webSpeechRec = new SpeechRecognition();
-    this.webSpeechRec.lang = 'es-ES';
-    this.webSpeechRec.continuous = false;
-    this.webSpeechRec.interimResults = false;
-    this.webSpeechRec.maxAlternatives = 1;
-
-    this.webSpeechRec.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      this.handleTranscript(transcript);
-    };
-
-    this.webSpeechRec.onerror = (event) => {
-      if (event.error === 'network' || event.error === 'service-not-allowed') {
-        if (dom.voiceStatus) dom.voiceStatus.textContent = '❌ Voz online bloqueada por navegador';
-        UI.updateEngineBadge('error', 'Google bloqueado');
-        this.type = null;
-        this.webSpeechRec = null;
-      } else if (event.error === 'not-allowed') {
-        if (dom.voiceStatus) dom.voiceStatus.textContent = '❌ Micrófono bloqueado';
-        UI.updateEngineBadge('error', 'Micrófono bloqueado');
-        this.type = null;
-      }
-    };
-
-    this.webSpeechRec.onend = () => {
-      if (SessionManager.isListeningForAnswer && this.type === 'webspeech') {
-        try { this.webSpeechRec.start(); } catch (e) { } // auto restart
-      } else if (SessionManager.awaitingAnswer && !SessionManager.isHelpMode) {
-        if (dom.voiceStatus) dom.voiceStatus.textContent = '🎙️ Voz online activa';
-      }
-    };
-  },
-
-  async initVosk() {
-    if (this.micStream) {
-      this.micStream.getTracks().forEach(t => t.stop());
-    }
-    this.micStream = await navigator.mediaDevices.getUserMedia({
-      video: false,
-      audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1, sampleRate: 16000 }
-    });
-
-    if (!this.isVoskLoaded) {
-      this.voskModel = await Vosk.createModel('./models/es-model.tar.gz');
-      this.voskRecognizer = new this.voskModel.KaldiRecognizer(16000);
-      this.voskRecognizer.on("result", (message) => {
-        if (message.result.text) this.handleTranscript(message.result.text);
-      });
-      this.isVoskLoaded = true;
-    }
-
-    if (!AudioEngine.audioContext) {
-      AudioEngine.audioContext = new AudioContext({ sampleRate: 16000 });
-    } else if (AudioEngine.audioContext.state === 'suspended') {
-      await AudioEngine.audioContext.resume();
-    }
-    
-    if (this.micSourceNode) this.micSourceNode.disconnect();
-    if (this.recognizerNode) this.recognizerNode.disconnect();
-
-    this.micSourceNode = AudioEngine.audioContext.createMediaStreamSource(this.micStream);
-    this.recognizerNode = AudioEngine.audioContext.createScriptProcessor(4096, 1, 1);
-
-    this.recognizerNode.onaudioprocess = (event) => {
-      if (SessionManager.isListeningForAnswer && this.voskRecognizer) {
-        try { this.voskRecognizer.acceptWaveform(event.inputBuffer); } catch (e) { }
-      }
-    };
-
-    this.micSourceNode.connect(this.recognizerNode);
-    const dummyGain = AudioEngine.audioContext.createGain();
-    dummyGain.gain.value = 0;
-    this.recognizerNode.connect(dummyGain);
-    dummyGain.connect(AudioEngine.audioContext.destination);
-  },
-
-  startListening() {
-    if (this.type === 'webspeech' && this.webSpeechRec) {
-      try {
-        this.webSpeechRec.start();
-        if (dom.voiceStatus) dom.voiceStatus.textContent = '🎙️ Escuchando... (di "pista")';
-      } catch (e) {} 
-    } else if (this.type === 'vosk') {
-      if (AudioEngine.audioContext?.state === 'suspended') {
-        Utils.safe(() => AudioEngine.audioContext.resume());
-      }
-      if (dom.voiceStatus) dom.voiceStatus.textContent = '🎙️ Escuchando... (di "pista")';
-    }
-  },
-
-  stopListening() {
-    if (this.type === 'webspeech' && this.webSpeechRec) {
-      try { this.webSpeechRec.stop(); } catch (e) { }
-    }
   },
 
   shutdown() {
     this.stopListening();
+    this.stopAudio();
+    this.isVoskLoaded = false;
     if (this.micStream) {
       this.micStream.getTracks().forEach(t => t.stop());
       this.micStream = null;
     }
-    if (AudioEngine.audioContext) {
-      Utils.safe(() => AudioEngine.audioContext.close());
-      AudioEngine.audioContext = null;
+    if (this.audioContext) {
+      Utils.safe(() => this.audioContext.close());
+      this.audioContext = null;
     }
     this.micSourceNode = null;
     this.recognizerNode = null;
-  },
-
-  handleTranscript(transcript) {
-    if (!SessionManager.awaitingAnswer || SessionManager.isHelpMode) return;
-    
-    const normalized = Utils.normalizeText(transcript);
-    const isTrigger = this.VOICE_TRIGGERS.some(t => normalized === t || normalized.includes(t));
-
-    if (isTrigger) {
-      console.log('[ZenHanzi] Voice trigger detected:', transcript);
-      UI.showToast('💡 Pista activada por voz', 'info', 1500);
-      SessionManager.playSentenceHelp(true);
-      return;
-    }
-
-    SessionManager.processAnswer(transcript);
   }
 };
 
 // ============================
-// 7. SESSION MANAGER
+// 7. SESSION MANAGER (FSM)
 // ============================
 const SessionManager = {
+  state: 'IDLE', // IDLE, PLAYING_PROMPT, LISTENING, PLAYING_HELP, FEEDBACK
   queue: [],
   index: 0,
   stats: { total: 0, correct: 0, newCount: 0 },
   currentWordObj: null,
   currentMode: 'srs',
-  
-  awaitingAnswer: false,
-  isListeningForAnswer: false,
-  isHelpMode: false,
-  sessionToken: 0,
-  autoAdvanceTimer: null,
+  timer: null,
 
-  buildQueue(mode) {
-    const now = Date.now();
-    const vocab = StorageManager.vocabulary;
-    const userData = StorageManager.userData;
-    
-    if (mode === 'srs') {
-      let candidates = vocab.filter(w => userData[w.id] && !userData[w.id].hidden && userData[w.id].due <= now);
-      Utils.shuffleArray(candidates);
-      if (candidates.length === 0) {
-        UI.showToast('No hay palabras vencidas. Prueba Nuevas o Favoritas.', 'info');
-        return [];
-      }
-      return candidates.map(w => w.id);
-    }
+  initEvents() {
+    EventBus.on('ui_start_session', (mode) => this.startSession(mode));
+    EventBus.on('ui_answer', (opt) => this.handleAnswer(opt));
+    EventBus.on('voice_recognized', (text) => this.handleVoice(text));
+    EventBus.on('ui_help', () => this.handleHelp());
+    EventBus.on('ui_replay', () => this.transition('PLAYING_PROMPT'));
+    EventBus.on('ui_toggle_favorite', () => this.toggleFavorite());
+    EventBus.on('ui_exit_session', () => this.exitSession());
+  },
 
-    let priority = [], normal = [];
-    if (mode === 'new') {
-      priority = vocab.filter(w => userData[w.id] && !userData[w.id].hidden && userData[w.id].reps === 0);
-      normal = vocab.filter(w => userData[w.id] && !userData[w.id].hidden && userData[w.id].due <= now && userData[w.id].reps !== 0);
-    } else if (mode === 'favorites') {
-      priority = vocab.filter(w => userData[w.id] && !userData[w.id].hidden && userData[w.id].favorited);
-      normal = vocab.filter(w => userData[w.id] && !userData[w.id].hidden && userData[w.id].due <= now && !userData[w.id].favorited);
-    }
+  transition(newState) {
+    if (this.state === 'IDLE' && newState !== 'PLAYING_PROMPT') return;
+    this.state = newState;
 
-    Utils.shuffleArray(priority);
-    Utils.shuffleArray(normal);
-    const combined = [...priority, ...normal];
-    if (combined.length === 0) {
-      UI.showToast('No hay palabras para este criterio.', 'info');
-      return [];
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+
+    switch (this.state) {
+      case 'IDLE':
+        MediaController.shutdown();
+        UI.updateEngineBadge('hidden');
+        if (dom.session) dom.session.classList.remove('active');
+        if (dom.welcome) dom.welcome.classList.add('active');
+        UI.updateWelcomeStats(StorageManager.vocabulary, StorageManager.userData);
+        break;
+
+      case 'PLAYING_PROMPT':
+        MediaController.stopListening();
+        if (dom.helpBtn) dom.helpBtn.classList.remove('disabled');
+        if (dom.responseContainer) dom.responseContainer.classList.remove('disabled');
+        if (dom.voiceStatus) dom.voiceStatus.textContent = "🔊 Reproduciendo...";
+        
+        MediaController.playAudio(this.currentWordObj.chineseAudio)
+          .then(() => this.transition('LISTENING'))
+          .catch(() => this.transition('LISTENING'));
+        break;
+
+      case 'LISTENING':
+        if (dom.helpBtn) dom.helpBtn.classList.remove('disabled');
+        if (dom.responseContainer) dom.responseContainer.classList.remove('disabled');
+        MediaController.playBeep('listen');
+        MediaController.startListening();
+        break;
+
+      case 'PLAYING_HELP':
+        MediaController.stopListening();
+        if (dom.helpBtn) dom.helpBtn.classList.add('disabled');
+        
+        MediaController.playBeep('help');
+        MediaController.playAudio(this.currentWordObj.sentenceAudio)
+          .then(() => {
+            if (this.state !== 'PLAYING_HELP') return; // State changed by user action
+            if (dom.voiceStatus) dom.voiceStatus.textContent = '🔊 Repitiendo palabra...';
+            this.timer = setTimeout(() => {
+              if (this.state !== 'PLAYING_HELP') return;
+              MediaController.playAudio(this.currentWordObj.chineseAudio)
+                .then(() => this.transition('LISTENING'))
+                .catch(() => this.transition('LISTENING'));
+            }, 600);
+          })
+          .catch(() => this.transition('LISTENING'));
+        break;
+
+      case 'FEEDBACK':
+        MediaController.stopListening();
+        MediaController.stopAudio();
+        if (dom.responseContainer) dom.responseContainer.classList.add('disabled');
+        if (dom.helpBtn) dom.helpBtn.classList.add('disabled');
+        break;
     }
-    return combined.map(w => w.id);
   },
 
   async startSession(mode) {
     this.currentMode = mode;
-    const queueIds = this.buildQueue(mode);
-    if (queueIds.length === 0) return;
+    const queueIds = StorageManager.getDueWords(mode);
+    if (queueIds.length === 0) {
+      UI.showToast('No hay palabras para este criterio.', 'info');
+      return;
+    }
 
     this.queue = queueIds;
     this.index = 0;
@@ -716,113 +812,58 @@ const SessionManager = {
     if (dom.welcome) dom.welcome.classList.remove('active');
     if (dom.session) dom.session.classList.add('active');
 
-    await SpeechEngine.init();
+    await MediaController.init();
     this.loadCurrentWord();
   },
 
   loadCurrentWord() {
-    this.sessionToken++;
-    const token = this.sessionToken;
-
-    if (this.autoAdvanceTimer) clearTimeout(this.autoAdvanceTimer);
-    
-    this.awaitingAnswer = true;
-    this.isListeningForAnswer = false;
-    this.isHelpMode = false;
-    
-    SpeechEngine.stopListening();
-    AudioEngine.cleanup();
-
     const id = this.queue[this.index];
     this.currentWordObj = StorageManager.vocabMap.get(id);
     
     if (!this.currentWordObj) {
-      console.error('Word not found for id:', id);
       return this.nextWord();
     }
 
-    UI.renderWord(this.currentWordObj, this.index, this.queue.length, (selected, correct) => {
-      if (token !== this.sessionToken) return;
-      this.handleButtonAnswer(selected, correct);
-    });
+    UI.renderWord(this.currentWordObj, this.index, this.queue.length);
+    this.transition('PLAYING_PROMPT');
+  },
 
-    if (dom.voiceStatus) dom.voiceStatus.textContent = "🔊 Reproduciendo...";
+  handleAnswer(selectedOption) {
+    if (this.state !== 'PLAYING_PROMPT' && this.state !== 'LISTENING' && this.state !== 'PLAYING_HELP') return;
     
-    const audioPath = this.currentWordObj.chineseAudio;
-    if (!audioPath) {
-      console.warn('Ruta de audio no definida');
-      this.activateListening(token);
-      return;
-    }
-
-    AudioEngine.play(audioPath, 
-      () => this.activateListening(token),
-      () => this.activateListening(token)
-    );
+    const validMeanings = (this.currentWordObj.meaning || '').split(',').map(m => m.trim());
+    const isCorrect = selectedOption === validMeanings[0];
+    this.submitResult(isCorrect);
   },
 
-  activateListening(token) {
-    if (token !== this.sessionToken || !this.awaitingAnswer || this.isHelpMode) return;
-    this.isListeningForAnswer = true;
-    AudioEngine.playBeep('listen');
-    SpeechEngine.startListening();
-  },
-
-  playSentenceHelp(voiceActivated = false) {
-    if (!this.awaitingAnswer || !this.currentWordObj || this.isHelpMode) return;
-    if (!this.currentWordObj.sentenceAudio) {
-      if (!voiceActivated) UI.showToast('No hay oración de ayuda', 'info');
-      return;
-    }
-
-    this.sessionToken++;
-    const token = this.sessionToken;
-
-    this.isHelpMode = true;
-    this.isListeningForAnswer = false;
-    SpeechEngine.stopListening();
-    AudioEngine.cleanup();
-
-    if (dom.helpBtn) dom.helpBtn.classList.add('disabled');
-    if (dom.voiceStatus) dom.voiceStatus.textContent = voiceActivated ? '💡 Pista por voz...' : '💡 Escuchando oración...';
+  handleVoice(spokenText) {
+    if (this.state !== 'LISTENING') return;
     
-    AudioEngine.playBeep('help');
-    AudioEngine.play(this.currentWordObj.sentenceAudio, () => {
-      if (token !== this.sessionToken) return;
-      if (dom.voiceStatus) dom.voiceStatus.textContent = '🔊 Repitiendo palabra...';
-      
-      setTimeout(() => {
-        if (token !== this.sessionToken || !this.awaitingAnswer) return;
-        this.isHelpMode = false;
-        if (dom.helpBtn) dom.helpBtn.classList.remove('disabled');
-        AudioEngine.play(this.currentWordObj.chineseAudio, () => this.activateListening(token), () => this.activateListening(token));
-      }, 600);
-    });
-  },
-
-  processAnswer(spokenText) {
-    this.isListeningForAnswer = false;
-    SpeechEngine.stopListening();
-
     const normalizedSpoken = Utils.normalizeText(spokenText);
     const validMeanings = (this.currentWordObj.meaning || '').split(',').map(m => Utils.normalizeText(m.trim()));
     
     const isCorrect = Utils.matchMeaning(normalizedSpoken, validMeanings);
-    this.submitResult(isCorrect);
+    
+    // Enfoque Indulgente: Solo procesamos si la voz es correcta.
+    // Evitamos penalizar el SRS por errores de Vosk o ruidos de fondo.
+    if (isCorrect) {
+      this.submitResult(true);
+    }
   },
 
-  handleButtonAnswer(selected, correctAnswer) {
-    if (!this.awaitingAnswer || this.isHelpMode) return;
-    this.isListeningForAnswer = false;
-    SpeechEngine.stopListening();
-    this.submitResult(selected === correctAnswer);
+  handleHelp() {
+    if (this.state !== 'PLAYING_PROMPT' && this.state !== 'LISTENING') return;
+    if (!this.currentWordObj.sentenceAudio) {
+      UI.showToast('No hay oración de ayuda', 'info');
+      return;
+    }
+    UI.showToast('💡 Pista activada', 'info', 1500);
+    if (dom.voiceStatus) dom.voiceStatus.textContent = '💡 Ayuda...';
+    this.transition('PLAYING_HELP');
   },
 
   submitResult(isCorrect) {
-    if (!this.awaitingAnswer || !this.currentWordObj || this.isHelpMode) return;
-    this.awaitingAnswer = false;
-    this.isListeningForAnswer = false;
-    SpeechEngine.stopListening();
+    this.transition('FEEDBACK');
 
     const ud = StorageManager.userData[this.currentWordObj.id];
     if (!ud) return this.nextWord();
@@ -830,7 +871,7 @@ const SessionManager = {
     let newInterval, newEase, newReps, newDue;
 
     if (isCorrect) {
-      AudioEngine.playBeep('correct');
+      MediaController.playBeep('correct');
       this.stats.correct++;
       if (ud.reps === 0) {
         newInterval = 1;
@@ -844,7 +885,7 @@ const SessionManager = {
       }
       newDue = Date.now() + (newInterval * 86400000);
     } else {
-      AudioEngine.playBeep('wrong');
+      MediaController.playBeep('wrong');
       ud.lapses = (ud.lapses || 0) + 1;
       newReps = 0;
       newInterval = 1;
@@ -863,7 +904,7 @@ const SessionManager = {
     UI.showFeedback(isCorrect, firstMeaning);
 
     const delay = isCorrect ? 1500 : 2000;
-    this.autoAdvanceTimer = setTimeout(() => this.nextWord(), delay);
+    this.timer = setTimeout(() => this.nextWord(), delay);
   },
 
   nextWord() {
@@ -875,21 +916,23 @@ const SessionManager = {
     }
   },
 
-  replayAudio() {
-    if (!this.awaitingAnswer || this.isHelpMode || !this.currentWordObj?.chineseAudio) return;
-    this.sessionToken++;
-    const token = this.sessionToken;
-    this.isListeningForAnswer = false;
-    SpeechEngine.stopListening();
-    AudioEngine.play(this.currentWordObj.chineseAudio, () => this.activateListening(token), () => this.activateListening(token));
+  toggleFavorite() {
+    if (!this.currentWordObj) return;
+    const id = this.currentWordObj.id;
+    const ud = StorageManager.userData[id];
+    if (!ud) return;
+
+    ud.favorited = !ud.favorited;
+    StorageManager.userData[id] = ud;
+    StorageManager.saveUserData();
+
+    UI.updateFavoriteButton(ud.favorited);
+    const msg = ud.favorited ? '❤️ Añadido a favoritos' : '🤍 Eliminado de favoritos';
+    UI.showToast(msg, 'info', 1200);
   },
 
   endSession() {
-    this.sessionToken++;
-    SpeechEngine.stopListening();
-    UI.updateEngineBadge('hidden');
-    AudioEngine.cleanup();
-
+    this.transition('IDLE');
     if (dom.session) dom.session.classList.remove('active');
     if (dom.summary) dom.summary.classList.add('active');
     
@@ -900,18 +943,7 @@ const SessionManager = {
   },
 
   exitSession() {
-    this.sessionToken++;
-    this.isHelpMode = false;
-    if (this.autoAdvanceTimer) clearTimeout(this.autoAdvanceTimer);
-    
-    AudioEngine.cleanup();
-    SpeechEngine.shutdown();
-    UI.updateEngineBadge('hidden');
-    
-    if (dom.session) dom.session.classList.remove('active');
-    if (dom.welcome) dom.welcome.classList.add('active');
-    
-    UI.updateWelcomeStats(StorageManager.vocabulary, StorageManager.userData);
+    this.transition('IDLE');
   }
 };
 
@@ -919,6 +951,7 @@ const SessionManager = {
 // 8. BOOTSTRAP
 // ============================
 document.addEventListener('DOMContentLoaded', () => {
+  SessionManager.initEvents();
   StorageManager.loadInitialData().then(success => {
     if (success) UI.updateWelcomeStats(StorageManager.vocabulary, StorageManager.userData);
   });
