@@ -303,22 +303,8 @@ const StorageManager = {
 
   async loadInitialData() {
     try {
-      const cached = localStorage.getItem('zenhanzi_vocab_cache');
-      const cacheTime = localStorage.getItem('zenhanzi_vocab_cache_time');
-      const now = Date.now();
-
-      if (cached && cacheTime && (now - parseInt(cacheTime)) < 86400000) {
-        try {
-          this.vocabulary = JSON.parse(cached);
-          this.buildVocabMap();
-          this.loadUserData();
-          return true;
-        } catch (e) {
-          console.warn('Cache parse failed, fetching fresh');
-        }
-      }
-
-      const res = await fetch('data/vocabulary.json');
+      // Prioritize fetching fresh data (bypass browser cache for the check)
+      const res = await fetch('data/vocabulary.json', { cache: 'no-cache' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this.vocabulary = await res.json();
 
@@ -326,28 +312,28 @@ const StorageManager = {
         throw new Error('Vocabulario vacío o inválido');
       }
 
+      // Update the local cache for offline usage
       Utils.safe(() => {
         localStorage.setItem('zenhanzi_vocab_cache', JSON.stringify(this.vocabulary));
-        localStorage.setItem('zenhanzi_vocab_cache_time', String(now));
+        localStorage.setItem('zenhanzi_vocab_cache_time', String(Date.now()));
       });
 
       this.buildVocabMap();
       this.loadUserData();
       return true;
     } catch (err) {
-      console.error('Error cargando vocabulario:', err);
-      UI.showToast('Error cargando vocabulario. Revisa data/vocabulary.json', 'error');
-      
+      console.warn('Network fetch failed, trying local cache', err);
       const cached = localStorage.getItem('zenhanzi_vocab_cache');
       if (cached) {
         try {
           this.vocabulary = JSON.parse(cached);
           this.buildVocabMap();
           this.loadUserData();
-          UI.showToast('Usando vocabulario en caché', 'info');
+          console.info('Usando vocabulario en caché (modo offline)');
           return true;
         } catch (e) { }
       }
+      UI.showToast('Error cargando vocabulario. Revisa data/vocabulary.json', 'error');
       return false;
     }
   },
