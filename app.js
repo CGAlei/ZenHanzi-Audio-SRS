@@ -94,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
     engineBadge: Utils.$('engineBadge'),
     responseContainer: Utils.$('responseButtons'),
     feedback: Utils.$('feedback'),
+    correctBadge: Utils.$('correctBadge'),
     hanzi: Utils.$('hanziDisplay'),
     pinyin: Utils.$('pinyinHint'),
     wordCounter: Utils.$('wordCounter'),
@@ -219,6 +220,7 @@ const UI = {
     UI.updateFavoriteButton(ud ? ud.favorited : false);
 
     dom.feedback.classList.add('hidden');
+    if (dom.correctBadge) dom.correctBadge.classList.remove('visible');
   },
 
   showFeedback(isCorrect, correctAnswer) {
@@ -226,10 +228,12 @@ const UI = {
       dom.feedback.textContent = '✅ ¡Correcto!';
       dom.feedback.classList.remove('wrong');
       dom.feedback.classList.add('correct');
+      if (dom.correctBadge) dom.correctBadge.classList.add('visible');
     } else {
       dom.feedback.textContent = `❌ Incorrecto. Era: ${correctAnswer}`;
       dom.feedback.classList.remove('correct');
       dom.feedback.classList.add('wrong');
+      if (dom.correctBadge) dom.correctBadge.classList.remove('visible');
     }
     dom.feedback.classList.remove('hidden');
   },

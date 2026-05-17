@@ -56,6 +56,73 @@
     --default-mono-font-family: var(--font-mono);
     --font-display: "Outfit", system-ui, sans-serif;
     --font-cjk: "Noto Sans SC", sans-serif;
+
+    /* Animation Presets */
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-fast: 200ms var(--ease-smooth);
+    --transition-bounce: 350ms var(--ease-spring);
+
+    /* --- DEFAULT THEME: ZEN DARK --- */
+    --bg-main: oklch(14.1% 0.005 285.823);
+    --bg-app: rgba(24, 24, 27, 0.4);
+    --surface: rgba(255, 255, 255, 0.05);
+    --surface-border: rgba(255, 255, 255, 0.1);
+
+    --text-main: #ffffff;
+    --text-muted: oklch(70.4% 0.04 256.788);
+    --text-inv: oklch(20.8% 0.04 265.755);
+
+    --accent: oklch(74.6% 0.16 232.661);
+    --accent-glow: rgba(56, 189, 248, 0.4);
+    --secondary: oklch(67.3% 0.182 276.935);
+    --faded-fav: oklch(71.4% 0.203 305.504);
+
+    --blob-1: oklch(51.1% 0.262 276.966);
+    --blob-2: oklch(55.8% 0.288 302.321);
+    --blob-3: oklch(68.5% 0.169 237.323);
+  }
+
+  /* --- LIGHT MODE / CREAM THEME --- */
+  [data-theme="light"] {
+    --bg-main: oklch(98% 0.005 60);
+    --bg-app: rgba(255, 255, 255, 0.6);
+    --surface: rgba(0, 0, 0, 0.04);
+    --surface-border: rgba(0, 0, 0, 0.08);
+
+    --text-main: oklch(20.8% 0.04 265.755);
+    --text-muted: oklch(55.4% 0.046 257.417);
+    --text-inv: #ffffff;
+
+    --accent: oklch(55% 0.18 240);
+    --accent-glow: rgba(0, 100, 250, 0.15);
+    --secondary: oklch(45% 0.2 280);
+    --faded-fav: oklch(50% 0.22 310);
+
+    --blob-1: oklch(90% 0.08 240);
+    --blob-2: oklch(92% 0.06 280);
+    --blob-3: oklch(94% 0.05 200);
+  }
+
+  /* --- CYBERPUNK NEON THEME --- */
+  [data-theme="cyberpunk"] {
+    --bg-main: #020204;
+    --bg-app: rgba(10, 6, 22, 0.7);
+    --surface: rgba(0, 255, 242, 0.05);
+    --surface-border: #00fff2;
+
+    --text-main: #00fff2;
+    --text-muted: #ff0055;
+    --text-inv: #000000;
+
+    --accent: #ffff00;
+    --accent-glow: rgba(255, 255, 0, 0.4);
+    --secondary: #ff0055;
+    --faded-fav: #9d00ff;
+
+    --blob-1: #ff0055;
+    --blob-2: #00fff2;
+    --blob-3: #9d00ff;
   }
 }
 @layer base {
@@ -864,123 +931,158 @@
     }
   }
 }
+/* --- STRUCTURAL FIX: OVERLAYS & LAYERING --- */
 body {
-  background-color: #09090b;
-  color: #fafafa;
-  overflow-x: hidden;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  transition: background-color var(--transition-fast);
 }
+
 .screen {
   display: none !important;
+  opacity: 0;
+  will-change: opacity, transform;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
+
 .screen.active {
   display: flex !important;
+  opacity: 1;
 }
+
+/* Master Glass App Container */
+.app-container {
+  background: var(--bg-app);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  transition: all var(--transition-fast);
+}
+
+/* Dynamic Notification Toast Fix */
+#toast {
+  position: absolute;
+  top: 1.5rem;
+  left: 50%;
+  transform: translate(-50%, -20px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 100;
+  will-change: transform, opacity;
+  transition: transform var(--transition-bounce), opacity var(--transition-fast);
+}
+
+#toast.show {
+  transform: translate(-50%, 0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Isolated Absolute Answer Feedback Layer */
+.feedback-overlay {
+  position: absolute;
+  top: 25%;
+  left: 1rem;
+  right: 1rem;
+  z-index: 40;
+  pointer-events: none;
+  transform: scale(0.92);
+  opacity: 0;
+  will-change: transform, opacity;
+  transition: transform var(--transition-bounce), opacity var(--transition-fast);
+}
+
+.feedback-overlay.show {
+  transform: scale(1);
+  opacity: 1;
+}
+
+/* --- DESIGN UTILITIES & INTERACTION --- */
 .hidden {
   display: none !important;
 }
+
+/* Button & Tap Target Enhancements */
 .response-buttons button {
   width: 100%;
-  padding: 1.1rem;
-  padding-left: 3.5rem;
+  padding: 1.25rem 1.25rem 1.25rem 3.5rem;
   position: relative;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: 1.25rem;
   text-align: left;
   font-weight: 500;
-  color: #e2e8f0;
-  transition: all 0.2s;
+  color: var(--text-main);
+  will-change: transform;
+  transition: transform 100ms var(--ease-smooth), background var(--transition-fast);
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
+
 .response-buttons button:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
 }
-.response-buttons button:active, .response-buttons button.pressed {
+
+.response-buttons button:active {
   transform: scale(0.98);
-  background: rgba(255, 255, 255, 0.15);
 }
+
 .response-buttons button::before {
   content: attr(data-index);
   position: absolute;
-  left: 1rem;
+  left: 1.25rem;
   top: 50%;
   transform: translateY(-50%);
   width: 1.5rem;
   height: 1.5rem;
   background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
-.engine-badge.online {
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.1);
-  border-color: rgba(56, 189, 248, 0.2);
-}
-.engine-badge.offline {
-  color: #facc15;
-  background: rgba(250, 204, 21, 0.1);
-  border-color: rgba(250, 204, 21, 0.2);
-}
-.engine-badge.error {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.1);
-  border-color: rgba(248, 113, 113, 0.2);
-}
+
+/* --- STATE INDICATORS --- */
 .feedback.correct {
-  background: rgba(16, 185, 129, 0.2) !important;
-  border-color: rgba(16, 185, 129, 0.5) !important;
+  background: rgba(16, 185, 129, 0.15) !important;
+  border-color: #10b981 !important;
   color: #34d399 !important;
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.2);
 }
+
 .feedback.wrong {
-  background: rgba(244, 63, 94, 0.2) !important;
-  border-color: rgba(244, 63, 94, 0.5) !important;
+  background: rgba(244, 63, 94, 0.15) !important;
+  border-color: #f43f5e !important;
   color: #fb7185 !important;
+  box-shadow: 0 0 24px rgba(244, 63, 94, 0.2);
 }
-.toast.success {
-  border-color: #10b981;
-  color: #34d399;
+
+/* Smooth Ambient Blurs */
+.blob {
+  transition: background-color var(--transition-fast);
 }
-.toast.error {
-  border-color: #f43f5e;
-  color: #fb7185;
-}
-.toast.show {
-  transform: translateX(-50%) translateY(20px) !important;
-  opacity: 1 !important;
-}
+.blob-1 { background-color: var(--blob-1); }
+.blob-2 { background-color: var(--blob-2); }
+.blob-3 { background-color: var(--blob-3); }
+
+/* Mic Pulse Waveform */
 .sound-wave span {
   width: 3px;
   height: 12px;
-  background: #38bdf8;
+  background: var(--accent);
   border-radius: 2px;
   animation: wave 0.5s infinite ease alternate;
 }
-.sound-wave span:nth-child(2) {
-  animation-delay: 0.08s;
-  height: 18px;
-}
-.sound-wave span:nth-child(3) {
-  animation-delay: 0.16s;
-  height: 14px;
-}
-.sound-wave span:nth-child(4) {
-  animation-delay: 0.24s;
-  height: 20px;
-}
+
 @keyframes wave {
-  from {
-    transform: scaleY(0.5);
-  }
-  to {
-    transform: scaleY(1);
-  }
+  from { transform: scaleY(0.4); }
+  to { transform: scaleY(1.2); }
 }
 
 .favorite-btn {
@@ -1331,3 +1433,50 @@ body {
     }
   }
 }
+
+/* --- ADDITIONS: 4-WORD MODE + CORRECT BADGE --- */
+
+/* 1. Shrink hanzi when 4 answer buttons are present */
+#sessionScreen:has(#responseButtons > button:nth-child(4)) #hanziDisplay {
+  font-size: 3rem;      /* ~text-5xl */
+  line-height: 1;
+}
+
+@media (width >= 48rem) {
+  #sessionScreen:has(#responseButtons > button:nth-child(4)) #hanziDisplay {
+    font-size: 4.5rem;   /* ~text-7xl */
+    line-height: 1;
+  }
+}
+
+/* 2. Smooth transition when button count changes */
+#hanziDisplay {
+  transition: font-size 300ms var(--ease-smooth);
+}
+
+/* 3. Correct-answer badge — absolutely positioned so it never shifts the hanzi */
+#correctBadge {
+  position: absolute;
+  top: 0;
+  right: -2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  background: #10b981;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.35);
+  opacity: 0;
+  transform: scale(0);
+  transition: opacity 300ms var(--ease-smooth), transform 300ms var(--ease-spring);
+  pointer-events: none;
+}
+#correctBadge.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
